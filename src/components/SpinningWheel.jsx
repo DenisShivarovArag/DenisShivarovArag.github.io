@@ -495,9 +495,10 @@ const SpinningWheel = () => {
         </div>
       )}
 
-      <footer>Wheel of Dailies v1.7</footer>
+      <footer>Wheel of Dailies v2.0</footer>
     </>
   );
 };
 
 export default SpinningWheel;
+
