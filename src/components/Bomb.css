@@ -1,0 +1,68 @@
+.bomb-container {
+  width: 100%;
+  max-width: 200px;
+  margin-top: -80px;
+}
+
+.bomb-svg {
+  width: 100%;
+  height: auto;
+}
+
+.bomb-body {
+  fill: #333;
+}
+
+.bomb-fuse {
+  fill: #8b4513;
+}
+
+.bomb-timer {
+  font-family: "Courier New", monospace;
+  font-size: 24px;
+  fill: #00ff00;
+}
+
+.fuse-fire {
+  animation: burn 0.5s infinite alternate;
+}
+
+.fire-particle {
+  fill: none;
+  stroke: #ff4500;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+  animation: flicker 0.5s infinite alternate;
+}
+
+.fire-particle:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.fire-particle:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+@keyframes burn {
+  0% {
+    transform: translate(100px, 90px) scale(0.5);
+  }
+  100% {
+    transform: translate(100px, 88px) scale(0.55);
+  }
+}
+
+@keyframes flicker {
+  0% {
+    opacity: 0.5;
+    stroke: #ff4500;
+  }
+  50% {
+    opacity: 0.7;
+    stroke: #ffa500;
+  }
+  100% {
+    opacity: 1;
+    stroke: #ff0000;
+  }
+}

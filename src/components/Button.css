@@ -1,0 +1,48 @@
+.button {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-icon {
+  margin-right: 0.5rem;
+}
+
+.spin-button {
+  width: 140px;
+  border-radius: 50px;
+  font-weight: 600;
+  background-color: #ffd700;
+  color: white;
+  border: none;
+}
+
+.spin-button:hover:not(:disabled) {
+  background-color: #ffc400;
+}
+
+.remove-button {
+  background-color: #ef4444;
+  color: white;
+}
+
+.remove-button:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+.reset-button {
+  width: 140px;
+  border-radius: 50px;
+  font-weight: 600;
+  color: white;
+  border: none;
+}
