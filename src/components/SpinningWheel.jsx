@@ -71,7 +71,20 @@ const SpinningWheel = () => {
   /** Modal state */
   const [showResetModal, setShowResetModal] = useState(false);
   const [selection, setSelection] = useState(new Set(defaultItems));
-  const [shooting, setShooting] = useState({ name: null, dir: null }); // {name, dir: 'right'|'left'}
+  const [shooting, setShooting] = useState({ name: null, dir: null }); // 'right'|'left'|'down'|'up'
+
+  /** NEW: Iskender Kebab Club state (per-session placement) */
+  const [kebabSet, setKebabSet] = useState(new Set());
+
+  /** NEW: Persistent counters for Kebab Club + Döner tally */
+  const [kebabCounters, setKebabCounters] = useState(() => {
+    const raw = localStorage.getItem("kebabCounters");
+    return raw ? JSON.parse(raw) : {};
+  });
+  const [donerCounts, setDonerCounts] = useState(() => {
+    const raw = localStorage.getItem("donerCounts");
+    return raw ? JSON.parse(raw) : {};
+  });
 
   const wheelRef = useRef(null);
   const timerRef = useRef(null);
@@ -96,6 +109,15 @@ const SpinningWheel = () => {
   useEffect(() => {
     localStorage.setItem("dailyStats", JSON.stringify(dailyStats));
   }, [dailyStats]);
+
+  // Persist new kebab + döner state
+  useEffect(() => {
+    localStorage.setItem("kebabCounters", JSON.stringify(kebabCounters));
+  }, [kebabCounters]);
+
+  useEffect(() => {
+    localStorage.setItem("donerCounts", JSON.stringify(donerCounts));
+  }, [donerCounts]);
 
   // Timer effect
   useEffect(() => {
@@ -185,12 +207,82 @@ const SpinningWheel = () => {
   /** Open modal instead of immediate reset */
   const resetWheel = () => {
     setSelection(new Set(defaultItems));
+    setKebabSet(new Set());
     setShowResetModal(true);
   };
+
+  /** NEW: move helpers with tiny “shoot” animations */
+  const moveWithAnimation = (name, dir, fn) => {
+    setShooting({ name, dir });
+    setTimeout(() => {
+      fn();
+      setShooting({ name: null, dir: null });
+    }, 300);
+  };
+
+  const moveToSelected = (name) =>
+    moveWithAnimation(name, "right", () =>
+      setSelection((prev) => new Set(prev).add(name))
+    );
+
+  const removeFromSelected = (name) =>
+    moveWithAnimation(name, "left", () =>
+      setSelection((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      })
+    );
+
+  const moveToKebabFromRoster = (name) =>
+    moveWithAnimation(name, "down", () => {
+      setKebabSet((prev) => new Set(prev).add(name));
+      setSelection((prev) => {
+        const next = new Set(prev);
+        next.delete(name); // ensure not also “Selected”
+        return next;
+      });
+    });
+
+  const moveToKebabFromSelected = (name) =>
+    moveWithAnimation(name, "down", () => {
+      setSelection((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+      setKebabSet((prev) => new Set(prev).add(name));
+    });
+
+  const removeFromKebab = (name) =>
+    moveWithAnimation(name, "up", () =>
+      setKebabSet((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      })
+    );
 
   const confirmResetSelection = () => {
     const selectedArray = Array.from(selection);
     if (selectedArray.length === 0) return;
+
+    /** Increment Iskender Kebab Club counters */
+    if (kebabSet.size > 0) {
+      const nextCounters = { ...kebabCounters };
+      const nextDoners = { ...donerCounts };
+      Array.from(kebabSet).forEach((name) => {
+        const current = (nextCounters[name] || 0) + 1;
+        if (current >= 10) {
+          nextCounters[name] = 0;
+          nextDoners[name] = (nextDoners[name] || 0) + 1;
+        } else {
+          nextCounters[name] = current;
+        }
+      });
+      setKebabCounters(nextCounters);
+      setDonerCounts(nextDoners);
+    }
 
     setDefaultItems(selectedArray);
     setItems(selectedArray);
@@ -200,21 +292,8 @@ const SpinningWheel = () => {
     setIsTimerRunning(false);
     setOvertime(0);
     setIsOvertime(false);
+    setKebabSet(new Set());
     setShowResetModal(false);
-  };
-
-  const handlePick = (name, dir) => {
-    // dir: 'right' adds to selection; 'left' removes
-    setShooting({ name, dir });
-    setTimeout(() => {
-      setSelection((prev) => {
-        const next = new Set(prev);
-        if (dir === "right") next.add(name);
-        else next.delete(name);
-        return next;
-      });
-      setShooting({ name: null, dir: null });
-    }, 300); // match CSS animation duration
   };
 
   const endDaily = () => {
@@ -282,9 +361,22 @@ const SpinningWheel = () => {
   }, []);
 
   /** Derived lists for modal columns */
-  const allPool = BASE_ITEMS; // what you said should be choosable
+  const allPool = BASE_ITEMS;
   const selectedList = Array.from(selection);
-  const availableList = allPool.filter((n) => !selection.has(n));
+  const kebabList = Array.from(kebabSet);
+  const availableList = allPool.filter(
+    (n) => !selection.has(n) && !kebabSet.has(n)
+  );
+
+  /** Döner reset button */
+  const clearDonerDebt = () => {
+    // Reset only the Döner “debt” counts (keep counters)
+    const cleared = {};
+    Object.keys(donerCounts).forEach((k) => (cleared[k] = 0));
+    setDonerCounts(cleared);
+  };
+
+  const hasAnyDoner = Object.values(donerCounts).some((v) => (v || 0) > 0);
 
   return (
     <>
@@ -414,6 +506,37 @@ const SpinningWheel = () => {
           </label>
           <span className="toggle-label">Show Duration</span>
         </div>
+
+        {/* NEW: Döner table (under Show Duration) */}
+        {hasAnyDoner && (
+          <div className="doner-table-wrap">
+            <h3 className="doner-title">Iskender Kebab Club</h3>
+            <table className="doner-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Dönneranzahl</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(donerCounts)
+                  .filter(([, c]) => (c || 0) > 0)
+                  .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+                  .map(([name, count]) => (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td aria-label={`${count} Döner`}>
+                        {"🥙".repeat(count || 0)}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <button className="btn ghost small" onClick={clearDonerDebt}>
+              Dönnerschulden abbezahlt
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Reset modal */}
@@ -430,11 +553,14 @@ const SpinningWheel = () => {
             <div className="reset-modal-header">
               <h2>Choose participants</h2>
               <span className="reset-subtitle">
-                Click a name to shoot it across ⚡
+                Click to move between columns • <b>Shift-click</b> in “Roster”
+                or “Selected” to send to <b>Iskender Kebab Club</b> • Counters
+                increment when you press <b>Use</b>.
               </span>
             </div>
 
             <div className="reset-columns">
+              {/* ROSTER */}
               <div className="reset-col">
                 <div className="col-title">Roster</div>
                 <div className="pill-list">
@@ -443,11 +569,19 @@ const SpinningWheel = () => {
                       key={`avail-${n}`}
                       className={
                         "item-pill " +
-                        (shooting.name === n && shooting.dir === "right"
-                          ? "shoot-right"
+                        (shooting.name === n &&
+                        (shooting.dir === "right" || shooting.dir === "down")
+                          ? shooting.dir === "right"
+                            ? "shoot-right"
+                            : "shoot-down"
                           : "")
                       }
-                      onClick={() => handlePick(n, "right")}
+                      onClick={(e) =>
+                        e.shiftKey
+                          ? moveToKebabFromRoster(n)
+                          : moveToSelected(n)
+                      }
+                      title="Click: select • Shift+Click: send to Iskender Kebab Club"
                     >
                       {n}
                     </button>
@@ -455,6 +589,7 @@ const SpinningWheel = () => {
                 </div>
               </div>
 
+              {/* SELECTED */}
               <div className="reset-col target">
                 <div className="col-title">Selected</div>
                 <div className="pill-list">
@@ -463,15 +598,49 @@ const SpinningWheel = () => {
                       key={`sel-${n}`}
                       className={
                         "item-pill selected " +
-                        (shooting.name === n && shooting.dir === "left"
-                          ? "shoot-left"
+                        (shooting.name === n &&
+                        (shooting.dir === "left" || shooting.dir === "down")
+                          ? shooting.dir === "left"
+                            ? "shoot-left"
+                            : "shoot-down"
                           : "")
                       }
-                      onClick={() => handlePick(n, "left")}
+                      onClick={(e) =>
+                        e.shiftKey
+                          ? moveToKebabFromSelected(n)
+                          : removeFromSelected(n)
+                      }
+                      title="Click: send back to Roster • Shift+Click: send to Iskender Kebab Club"
                     >
                       {n}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* NEW: ISKENDER KEBAB CLUB */}
+              <div className="reset-col kebab">
+                <div className="col-title">Iskender Kebab Club</div>
+                <div className="pill-list">
+                  {kebabList.map((n) => {
+                    const count = kebabCounters[n] || 0;
+                    return (
+                      <button
+                        key={`kebab-${n}`}
+                        className={
+                          "item-pill kebab-pill " +
+                          (shooting.name === n && shooting.dir === "up"
+                            ? "shoot-up"
+                            : "")
+                        }
+                        onClick={() => removeFromKebab(n)}
+                        title="Click: remove from Kebab Club"
+                      >
+                        <span className="counter-badge">{count}/10</span>
+                        {n}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -501,4 +670,3 @@ const SpinningWheel = () => {
 };
 
 export default SpinningWheel;
-
