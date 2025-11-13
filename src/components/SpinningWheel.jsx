@@ -44,6 +44,20 @@ const SpinningWheel = () => {
     return savedDefault ? JSON.parse(savedDefault) : BASE_ITEMS;
   });
 
+  const [prodControlAssignment, setProdControlAssignment] = useState(() => {
+    return localStorage.getItem("prodControlAssignment") || null;
+  });
+
+  const [lastWeekStart, setLastWeekStart] = useState(() => {
+    const saved = localStorage.getItem("lastWeekStart");
+    return saved ? new Date(saved) : null;
+  });
+
+  const [prodControlStatus, setProdControlStatus] = useState(() => {
+    const saved = localStorage.getItem("prodControlStatus");
+    return saved ? JSON.parse(saved) : null; // true=good, false=bad, null=not checked
+  });
+
   const [selectedItem, setSelectedItem] = useState(() => {
     return localStorage.getItem("selectedItem") || null;
   });
@@ -72,6 +86,8 @@ const SpinningWheel = () => {
   const [showResetModal, setShowResetModal] = useState(false);
   const [selection, setSelection] = useState(new Set(defaultItems));
   const [shooting, setShooting] = useState({ name: null, dir: null }); // 'right'|'left'|'down'|'up'
+  const [showProdControlModal, setShowProdControlModal] = useState(false);
+  const [showProdProblemsModal, setShowProdProblemsModal] = useState(false);
 
   /** NEW: Iskender Kebab Club state (per-session placement) */
   const [kebabSet, setKebabSet] = useState(new Set());
@@ -118,6 +134,29 @@ const SpinningWheel = () => {
   useEffect(() => {
     localStorage.setItem("donerCounts", JSON.stringify(donerCounts));
   }, [donerCounts]);
+
+  // Call on mount and when reset modal opens
+  useEffect(() => {
+    checkWeeklyReset();
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("prodControlAssignment", prodControlAssignment || "");
+  }, [prodControlAssignment]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "lastWeekStart",
+      lastWeekStart ? lastWeekStart.toISOString() : ""
+    );
+  }, [lastWeekStart]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "prodControlStatus",
+      JSON.stringify(prodControlStatus)
+    );
+  }, [prodControlStatus]);
 
   // Timer effect
   useEffect(() => {
@@ -190,6 +229,11 @@ const SpinningWheel = () => {
       setSelectedItem(selected);
       setIsSpinning(false);
 
+      // Show PROD Control check if selected participant is assigned
+      if (selected === prodControlAssignment) {
+        setShowProdControlModal(true);
+      }
+
       if (!isTimerRunning) {
         setIsTimerRunning(true);
       }
@@ -206,6 +250,7 @@ const SpinningWheel = () => {
 
   /** Open modal instead of immediate reset */
   const resetWheel = () => {
+    checkWeeklyReset(); // Ensure weekly reset is applied
     setSelection(new Set(defaultItems));
     setKebabSet(new Set());
     setShowResetModal(true);
@@ -296,8 +341,32 @@ const SpinningWheel = () => {
     setShowResetModal(false);
   };
 
+  // Weekly reset check function
+  const checkWeeklyReset = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    const diffToMonday = (dayOfWeek + 6) % 7; // Days since Monday
+    const currentWeekStart = new Date(now);
+    currentWeekStart.setDate(now.getDate() - diffToMonday);
+    currentWeekStart.setHours(0, 0, 0, 0);
+
+    if (
+      !lastWeekStart ||
+      new Date(lastWeekStart).getTime() !== currentWeekStart.getTime()
+    ) {
+      setProdControlAssignment(null);
+      setProdControlStatus(null);
+      setLastWeekStart(currentWeekStart);
+    }
+  };
+
   const endDaily = () => {
-    // Calculate how much time was used (15 minutes minus remaining time)
+    // Show PROD PROBLEME popup if control didn't go well
+    if (prodControlStatus === false) {
+      setShowProdProblemsModal(true);
+      setProdControlStatus(null); // Reset status after showing
+    }
+
     const duration = INITIAL_DURATION - timeRemaining;
     const totalDuration = duration + overtime;
 
@@ -568,7 +637,8 @@ const SpinningWheel = () => {
                     <button
                       key={`avail-${n}`}
                       className={
-                        "item-pill " +
+                        "item-pill selected " +
+                        (prodControlAssignment === n ? "prod-control " : "") +
                         (shooting.name === n &&
                         (shooting.dir === "right" || shooting.dir === "down")
                           ? shooting.dir === "right"
@@ -576,12 +646,19 @@ const SpinningWheel = () => {
                             : "shoot-down"
                           : "")
                       }
-                      onClick={(e) =>
+                      onClick={(e) => {
+                        if (e.ctrlKey) {
+                          // Toggle PROD Control assignment
+                          setProdControlAssignment(
+                            prodControlAssignment === n ? null : n
+                          );
+                          return; // Prevent other click behaviors
+                        }
                         e.shiftKey
-                          ? moveToKebabFromRoster(n)
-                          : moveToSelected(n)
-                      }
-                      title="Click: select • Shift+Click: send to Iskender Kebab Club"
+                          ? moveToKebabFromSelected(n)
+                          : moveToSelected(n);
+                      }}
+                      title="Ctrl+Click: assign PROD Control • Click: send back to Roster • Shift+Click: send to Iskender Kebab Club"
                     >
                       {n}
                     </button>
@@ -598,6 +675,7 @@ const SpinningWheel = () => {
                       key={`sel-${n}`}
                       className={
                         "item-pill selected " +
+                        (prodControlAssignment === n ? "prod-control " : "") + // ← KEEP THIS
                         (shooting.name === n &&
                         (shooting.dir === "left" || shooting.dir === "down")
                           ? shooting.dir === "left"
@@ -605,12 +683,19 @@ const SpinningWheel = () => {
                             : "shoot-down"
                           : "")
                       }
-                      onClick={(e) =>
+                      onClick={(e) => {
+                        if (e.ctrlKey) {
+                          // ← ADD CTRL-HANDLER
+                          setProdControlAssignment(
+                            prodControlAssignment === n ? null : n
+                          );
+                          return;
+                        }
                         e.shiftKey
                           ? moveToKebabFromSelected(n)
-                          : removeFromSelected(n)
-                      }
-                      title="Click: send back to Roster • Shift+Click: send to Iskender Kebab Club"
+                          : removeFromSelected(n);
+                      }}
+                      title="Ctrl+Click: assign PROD Control • Click: send back to Roster • Shift+Click: send to Kebab Club"
                     >
                       {n}
                     </button>
@@ -629,12 +714,22 @@ const SpinningWheel = () => {
                         key={`kebab-${n}`}
                         className={
                           "item-pill kebab-pill " +
+                          (prodControlAssignment === n ? "prod-control " : "") + // ← ADD THIS
                           (shooting.name === n && shooting.dir === "up"
                             ? "shoot-up"
                             : "")
                         }
-                        onClick={() => removeFromKebab(n)}
-                        title="Click: remove from Kebab Club"
+                        onClick={(e) => {
+                          if (e.ctrlKey) {
+                            // ← ADD CTRL-HANDLER
+                            setProdControlAssignment(
+                              prodControlAssignment === n ? null : n
+                            );
+                            return;
+                          }
+                          removeFromKebab(n);
+                        }}
+                        title="Ctrl+Click: assign PROD Control • Click: remove from Kebab Club"
                       >
                         <span className="counter-badge">{count}/10</span>
                         {n}
@@ -660,6 +755,64 @@ const SpinningWheel = () => {
                 Use {selection.size} item{selection.size === 1 ? "" : "s"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {showProdControlModal && (
+        <div
+          className="reset-modal-overlay"
+          onClick={(e) => {
+            if (e.target.classList.contains("reset-modal-overlay")) {
+              setShowProdControlModal(false);
+            }
+          }}
+        >
+          <div className="prod-modal">
+            <h3>PROD Kontrolle gut gelaufen?</h3>
+            <div className="prod-modal-buttons">
+              <button
+                className="yes-btn"
+                onClick={() => {
+                  setProdControlStatus(true);
+                  setShowProdControlModal(false);
+                }}
+              >
+                ✓ Ja
+              </button>
+              <button
+                className="no-btn"
+                onClick={() => {
+                  setProdControlStatus(false);
+                  setShowProdControlModal(false);
+                }}
+              >
+                ✗ Nein
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProdProblemsModal && (
+        <div
+          className="reset-modal-overlay"
+          onClick={(e) => {
+            if (e.target.classList.contains("reset-modal-overlay")) {
+              setShowProdProblemsModal(false);
+            }
+          }}
+        >
+          <div className="prod-modal">
+            <h3>PROD PROBLEME</h3>
+            <p style={{ margin: "20px 0" }}>
+              Es gab Probleme mit der PROD Kontrolle!
+            </p>
+            <button
+              className="btn primary"
+              onClick={() => setShowProdProblemsModal(false)}
+            >
+              Verstanden
+            </button>
           </div>
         </div>
       )}
