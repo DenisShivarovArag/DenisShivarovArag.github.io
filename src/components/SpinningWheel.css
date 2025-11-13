@@ -572,6 +572,78 @@ footer {
   color: #e9c700;
 }
 
+.item-pill.prod-control {
+  border-color: #00ff00 !important;
+  background: linear-gradient(180deg, #00ff00, #00cc00) !important;
+  color: #000 !important;
+  position: relative;
+}
+
+.item-pill.prod-control::after {
+  content: "PROD";
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #00ff00;
+  color: #000;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 4px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.item-pill.kebab-pill.prod-control::after {
+  right: -4px; /* Adjust for the left-side counter badge */
+}
+
+.prod-modal {
+  background: #111215;
+  border: 1px solid #2a2c2f;
+  border-radius: 12px;
+  padding: 20px;
+  color: #fff;
+  max-width: 400px;
+  text-align: center;
+}
+
+.prod-modal h3 {
+  color: #ffd700;
+  margin-bottom: 20px;
+}
+
+.prod-modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.prod-modal-buttons button {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.prod-modal-buttons .yes-btn {
+  background: #00ff00;
+  color: #000;
+}
+
+.prod-modal-buttons .no-btn {
+  background: #ff0000;
+  color: #fff;
+}
+
+.prod-modal-buttons button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
 /* Small screens */
 @media (max-width: 720px) {
   .reset-columns {
