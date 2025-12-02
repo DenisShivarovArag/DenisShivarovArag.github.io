@@ -102,6 +102,38 @@ const SpinningWheel = () => {
     return raw ? JSON.parse(raw) : {};
   });
 
+  // Add state for the weekly PROD‑Control assignments and the calendar visibility ──
+  const [weeklyProdAssignments, setWeeklyProdAssignments] = useState(() => {
+    const raw = localStorage.getItem("weeklyProdAssignments");
+    return raw ? JSON.parse(raw) : {};
+  });
+  const [showProdCalendar, setShowProdCalendar] = useState(false);
+
+  // Helper: Monday 00:00:00 local time (week start used everywhere) ──
+  const getMonday = (date) => {
+    const d = new Date(date);
+    const day = d.getDay(); // 0=Sun … 6=Sat
+    const diff = day === 0 ? -6 : 1 - day; // days to Monday
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  // Helper: produce a YYYY‑MM‑DD key from a date
+  const getWeekKey = (date) => getMonday(date).toLocaleDateString("de-DE");
+
+  // Helper function to get ISO week number
+  const getWeekNumber = (date) => {
+    const d = new Date(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+    );
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNumber = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+    return String(weekNumber).padStart(2, "0");
+  };
+
+  const weekNumber = getWeekNumber(new Date());
+
   const wheelRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -157,6 +189,14 @@ const SpinningWheel = () => {
       JSON.stringify(prodControlStatus)
     );
   }, [prodControlStatus]);
+
+  // Persist the weekly map whenever it changes ──
+  useEffect(() => {
+    localStorage.setItem(
+      "weeklyProdAssignments",
+      JSON.stringify(weeklyProdAssignments)
+    );
+  }, [weeklyProdAssignments]);
 
   // Timer effect
   useEffect(() => {
@@ -327,6 +367,15 @@ const SpinningWheel = () => {
       });
       setKebabCounters(nextCounters);
       setDonerCounts(nextDoners);
+    }
+
+    // persist the PROD‑Control person for this week
+    if (prodControlAssignment) {
+      const weekKey = getWeekKey(new Date());
+      setWeeklyProdAssignments((prev) => ({
+        ...prev,
+        [weekKey]: prodControlAssignment,
+      }));
     }
 
     setDefaultItems(selectedArray);
@@ -741,6 +790,15 @@ const SpinningWheel = () => {
             </div>
 
             <div className="modal-actions">
+              {/* Bottom‑left button that opens the calendar */}
+              <button
+                className="btn ghost small"
+                style={{ marginRight: "auto" }}
+                onClick={() => setShowProdCalendar(true)}
+              >
+                PROD Calendar
+              </button>
+
               <button
                 className="btn ghost"
                 onClick={() => setShowResetModal(false)}
@@ -817,7 +875,71 @@ const SpinningWheel = () => {
         </div>
       )}
 
-      <footer>Wheel of Dailies v2.0</footer>
+      {showProdCalendar && (
+        <div
+          className="reset-modal-overlay"
+          onClick={(e) => {
+            if (e.target.classList.contains("reset-modal-overlay")) {
+              setShowProdCalendar(false);
+            }
+          }}
+        >
+          <div className="reset-modal" style={{ maxWidth: 600 }}>
+            <div className="reset-modal-header">
+              <h2>PROD Control Calendar</h2>
+            </div>
+            <div className="doner-table-wrap">
+              <table className="doner-table">
+                <thead>
+                  <tr>
+                    <th>Week (Monday)</th>
+                    <th>PROD Control</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.keys(weeklyProdAssignments).length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={2}
+                        style={{ textAlign: "center", color: "#999" }}
+                      >
+                        No assignments yet
+                      </td>
+                    </tr>
+                  )}
+                  {Object.entries(weeklyProdAssignments)
+                    .sort(([a], [b]) => new Date(b) - new Date(a))
+                    .map(([weekKey, name]) => (
+                      <tr key={weekKey}>
+                        <td>
+                          {weekKey} (KW{weekNumber})
+                        </td>
+                        <td>
+                          <span
+                            className="item-pill prod-control"
+                            style={{ cursor: "default", fontSize: "0.9rem" }}
+                          >
+                            {name}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="btn ghost"
+                onClick={() => setShowProdCalendar(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer>Wheel of Dailies v3.0</footer>
     </>
   );
 };
