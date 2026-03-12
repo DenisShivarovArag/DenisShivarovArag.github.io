@@ -24,6 +24,7 @@ const BASE_ITEMS = [
   "Ivo",
   "Markus",
   "Jens",
+  "Andreas",
 ];
 
 const INITIAL_DURATION = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -80,6 +81,11 @@ const SpinningWheel = () => {
   const [overtime, setOvertime] = useState(0);
   const [isOvertime, setIsOvertime] = useState(false);
 
+  // Per-speaker timer
+  const [speakerTimeRemaining, setSpeakerTimeRemaining] = useState(0);
+  const [speakerOvertime, setSpeakerOvertime] = useState(0);
+  const [isSpeakerOvertime, setIsSpeakerOvertime] = useState(false);
+
   const [startTime, setStartTime] = useState(null);
 
   /** Modal state */
@@ -124,7 +130,7 @@ const SpinningWheel = () => {
   // Helper function to get ISO week number
   const getWeekNumber = (date) => {
     const d = new Date(
-      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
     );
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -132,7 +138,17 @@ const SpinningWheel = () => {
     return String(weekNumber).padStart(2, "0");
   };
 
-  const weekNumber = getWeekNumber(new Date());
+  // Time allotted per speaker (equal share of total duration)
+  const speakerTimeAllotted =
+    defaultItems.length > 0
+      ? Math.floor(INITIAL_DURATION / defaultItems.length)
+      : INITIAL_DURATION;
+
+  // Helper: parse a German locale date string ("d.M.yyyy") back to a Date
+  const parseGermanDate = (dateStr) => {
+    const [day, month, year] = dateStr.split(".").map(Number);
+    return new Date(year, month - 1, day);
+  };
 
   const wheelRef = useRef(null);
   const timerRef = useRef(null);
@@ -179,14 +195,14 @@ const SpinningWheel = () => {
   useEffect(() => {
     localStorage.setItem(
       "lastWeekStart",
-      lastWeekStart ? lastWeekStart.toISOString() : ""
+      lastWeekStart ? lastWeekStart.toISOString() : "",
     );
   }, [lastWeekStart]);
 
   useEffect(() => {
     localStorage.setItem(
       "prodControlStatus",
-      JSON.stringify(prodControlStatus)
+      JSON.stringify(prodControlStatus),
     );
   }, [prodControlStatus]);
 
@@ -194,13 +210,14 @@ const SpinningWheel = () => {
   useEffect(() => {
     localStorage.setItem(
       "weeklyProdAssignments",
-      JSON.stringify(weeklyProdAssignments)
+      JSON.stringify(weeklyProdAssignments),
     );
   }, [weeklyProdAssignments]);
 
-  // Timer effect
+  // Timer effect – runs independently of showDuration so toggling
+  // the display never pauses/restarts the clock.
   useEffect(() => {
-    if (isTimerRunning && showDuration) {
+    if (isTimerRunning) {
       timerRef.current = setInterval(() => {
         setTimeRemaining((prev) => {
           if (prev <= 0) {
@@ -215,24 +232,28 @@ const SpinningWheel = () => {
 
         // Separate overtime counter logic
         if (isOvertime) {
-          setOvertime((prev) => {
-            const newOvertime = prev + 1000;
-            // When overtime reaches 1 minute, hide the duration display
-            if (newOvertime === 61000) {
-              setShowDuration(false);
+          setOvertime((prev) => prev + 1000);
+        }
+
+        // Per-speaker countdown
+        setSpeakerTimeRemaining((prev) => {
+          if (prev <= 0) {
+            if (!isSpeakerOvertime) {
+              setIsSpeakerOvertime(true);
             }
-            return newOvertime;
-          });
+            return 0;
+          }
+          return prev - 1000;
+        });
+
+        if (isSpeakerOvertime) {
+          setSpeakerOvertime((prev) => prev + 1000);
         }
       }, 1000);
-    } else if (!isTimerRunning && !showDuration) {
-      clearInterval(timerRef.current);
-      setOvertime(0);
-      setIsOvertime(false);
     }
 
     return () => clearInterval(timerRef.current);
-  }, [isTimerRunning, isOvertime, showDuration]);
+  }, [isTimerRunning, isOvertime, isSpeakerOvertime]);
 
   const spinWheel = () => {
     if (items.length === 0) return;
@@ -268,6 +289,11 @@ const SpinningWheel = () => {
       const selected = updatedItems[selectedSegment];
       setSelectedItem(selected);
       setIsSpinning(false);
+
+      // Reset per-speaker timer for the new speaker
+      setSpeakerTimeRemaining(speakerTimeAllotted);
+      setSpeakerOvertime(0);
+      setIsSpeakerOvertime(false);
 
       // Show PROD Control check if selected participant is assigned
       if (selected === prodControlAssignment) {
@@ -307,7 +333,7 @@ const SpinningWheel = () => {
 
   const moveToSelected = (name) =>
     moveWithAnimation(name, "right", () =>
-      setSelection((prev) => new Set(prev).add(name))
+      setSelection((prev) => new Set(prev).add(name)),
     );
 
   const removeFromSelected = (name) =>
@@ -316,7 +342,7 @@ const SpinningWheel = () => {
         const next = new Set(prev);
         next.delete(name);
         return next;
-      })
+      }),
     );
 
   const moveToKebabFromRoster = (name) =>
@@ -345,7 +371,7 @@ const SpinningWheel = () => {
         const next = new Set(prev);
         next.delete(name);
         return next;
-      })
+      }),
     );
 
   const confirmResetSelection = () => {
@@ -386,6 +412,9 @@ const SpinningWheel = () => {
     setIsTimerRunning(false);
     setOvertime(0);
     setIsOvertime(false);
+    setSpeakerTimeRemaining(0);
+    setSpeakerOvertime(0);
+    setIsSpeakerOvertime(false);
     setKebabSet(new Set());
     setShowResetModal(false);
   };
@@ -436,13 +465,18 @@ const SpinningWheel = () => {
       console.log("Daily Statistics:", { ...dailyStats, [today]: newStat });
     } else {
       console.log(
-        "Daily duration was less than 5 minutes. Statistics not saved."
+        "Daily duration was less than 5 minutes. Statistics not saved.",
       );
     }
 
     setTimeRemaining(INITIAL_DURATION);
     setIsTimerRunning(false);
     setShowDuration(false);
+    setOvertime(0);
+    setIsOvertime(false);
+    setSpeakerTimeRemaining(0);
+    setSpeakerOvertime(0);
+    setIsSpeakerOvertime(false);
     setSelectedItem(null);
 
     const updatedItems = items.filter((item) => item !== selectedItem);
@@ -483,7 +517,7 @@ const SpinningWheel = () => {
   const selectedList = Array.from(selection);
   const kebabList = Array.from(kebabSet);
   const availableList = allPool.filter(
-    (n) => !selection.has(n) && !kebabSet.has(n)
+    (n) => !selection.has(n) && !kebabSet.has(n),
   );
 
   /** Döner reset button */
@@ -496,6 +530,23 @@ const SpinningWheel = () => {
 
   const hasAnyDoner = Object.values(donerCounts).some((v) => (v || 0) > 0);
 
+  // Speaker name color class based on per-speaker time remaining
+  const speakerColorClass = (() => {
+    if (
+      !isTimerRunning ||
+      !selectedItem ||
+      isSpinning ||
+      items.length === 0 ||
+      speakerTimeAllotted === 0
+    )
+      return "";
+    if (isSpeakerOvertime || speakerTimeRemaining <= speakerTimeAllotted * 0.2)
+      return "speaker-critical";
+    if (speakerTimeRemaining <= speakerTimeAllotted * 0.5)
+      return "speaker-warning";
+    return "";
+  })();
+
   return (
     <>
       <div className="spinning-wheel-container">
@@ -506,18 +557,25 @@ const SpinningWheel = () => {
           </div>
         )}
         {showDuration && (
-          <div
-            className={`duration-display ${
-              timeRemaining <= 0
-                ? "red finished" + (overtime >= 60000 ? " fade-out" : "")
-                : timeRemaining <= 5 * 60 * 1000
-                ? "red"
-                : timeRemaining <= 10 * 60 * 1000
-                ? "orange"
-                : "green"
-            }`}
-          >
-            {formatDuration(timeRemaining)}
+          <div className="duration-row">
+            <div
+              className={`duration-display ${
+                timeRemaining <= 0
+                  ? "red finished" + (overtime >= 60000 ? " fade-out" : "")
+                  : timeRemaining <= 5 * 60 * 1000
+                    ? "red"
+                    : timeRemaining <= 10 * 60 * 1000
+                      ? "orange"
+                      : "green"
+              }`}
+            >
+              {formatDuration(timeRemaining)}
+            </div>
+            {isSpeakerOvertime && selectedItem && (
+              <div className="speaker-overtime">
+                {selectedItem} +{Math.floor(speakerOvertime / 1000)}s
+              </div>
+            )}
           </div>
         )}
         <div className="wheel-container">
@@ -543,13 +601,13 @@ const SpinningWheel = () => {
               <span
                 className={`result-text ${
                   items.length === 0 ? "daily-over" : ""
-                }`}
+                } ${speakerColorClass}`}
               >
                 {isSpinning
                   ? "Spinning..."
                   : items.length === 0
-                  ? "Daily is over :)"
-                  : selectedItem || "Spin the wheel!"}
+                    ? "Daily is over :)"
+                    : selectedItem || "Spin the wheel!"}
               </span>
             </>
           ) : (
@@ -561,8 +619,8 @@ const SpinningWheel = () => {
               {isSpinning
                 ? "Spinning..."
                 : items.length === 0
-                ? "Daily is over :)"
-                : selectedItem || "Spin the wheel!"}
+                  ? "Daily is over :)"
+                  : selectedItem || "Spin the wheel!"}
             </span>
           )}
         </div>
@@ -575,8 +633,8 @@ const SpinningWheel = () => {
               items.length === 1
                 ? ArrowBigDown
                 : isTimerRunning
-                ? RotateCw
-                : ArrowRight
+                  ? RotateCw
+                  : ArrowRight
             }
           >
             {items.length === 1 ? "End the daily" : "Turn the wheel!"}
@@ -699,7 +757,7 @@ const SpinningWheel = () => {
                         if (e.ctrlKey) {
                           // Toggle PROD Control assignment
                           setProdControlAssignment(
-                            prodControlAssignment === n ? null : n
+                            prodControlAssignment === n ? null : n,
                           );
                           return; // Prevent other click behaviors
                         }
@@ -736,7 +794,7 @@ const SpinningWheel = () => {
                         if (e.ctrlKey) {
                           // ← ADD CTRL-HANDLER
                           setProdControlAssignment(
-                            prodControlAssignment === n ? null : n
+                            prodControlAssignment === n ? null : n,
                           );
                           return;
                         }
@@ -772,7 +830,7 @@ const SpinningWheel = () => {
                           if (e.ctrlKey) {
                             // ← ADD CTRL-HANDLER
                             setProdControlAssignment(
-                              prodControlAssignment === n ? null : n
+                              prodControlAssignment === n ? null : n,
                             );
                             return;
                           }
@@ -908,11 +966,12 @@ const SpinningWheel = () => {
                     </tr>
                   )}
                   {Object.entries(weeklyProdAssignments)
-                    .sort(([a], [b]) => new Date(b) - new Date(a))
+                    .sort(([a], [b]) => parseGermanDate(a) - parseGermanDate(b))
                     .map(([weekKey, name]) => (
                       <tr key={weekKey}>
                         <td>
-                          {weekKey} (KW{weekNumber})
+                          {weekKey} (KW{getWeekNumber(parseGermanDate(weekKey))}
+                          )
                         </td>
                         <td>
                           <span
@@ -939,7 +998,7 @@ const SpinningWheel = () => {
         </div>
       )}
 
-      <footer>Wheel of Dailies v3.0</footer>
+      <footer>Wheel of Dailies v4.0</footer>
     </>
   );
 };
